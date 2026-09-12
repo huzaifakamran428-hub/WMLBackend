@@ -1,0 +1,72 @@
+databases:
+  - name: wmcl-postgres
+    plan: free
+    databaseName: waqare_medina
+    user: waqare_admin
+
+services:
+  - type: web
+    name: wmlbackend
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt -r requirements-postgres.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "gunicorn config.wsgi:application"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: "wmlbackend.onrender.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://wmlbackend.onrender.com"
+      - key: DB_ENGINE
+        value: postgres
+      - key: DB_NAME
+        fromDatabase:
+          name: wmcl-postgres
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: wmcl-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: wmcl-postgres
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: wmcl-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: wmcl-postgres
+          property: port
+
+# WHY THIS FILE EXISTS
+# --------------------
+# Render's web services have an EPHEMERAL filesystem: every redeploy, and
+# every automatic restart (including the free-tier's spin-down after
+# ~15 minutes idle), wipes any file written to local disk -- including
+# db.sqlite3, which is what config/settings.py falls back to whenever
+# DB_ENGINE is not explicitly set to "postgres". That is almost certainly
+# why the app "loses everything after a while": the live service has been
+# running on that ephemeral SQLite file instead of a real database.
+#
+# This blueprint provisions a persistent managed Postgres database and
+# wires DB_ENGINE/DB_* into the web service automatically, so data
+# survives restarts and redeploys.
+#
+# TO APPLY THIS TO YOUR EXISTING LIVE SERVICE:
+# You don't have to delete/recreate anything. Either:
+#   (a) Render Dashboard -> New -> Blueprint -> point at this repo, and
+#       Render will create the Postgres DB and link it up for you, or
+#   (b) manually create a Postgres database on Render, then copy its
+#       connection details into your EXISTING wmlbackend service's
+#       Environment tab as DB_ENGINE / DB_NAME / DB_USER / DB_PASSWORD /
+#       DB_HOST / DB_PORT, matching the keys above, and make sure the
+#       Build Command installs requirements-postgres.txt and runs
+#       `python manage.py migrate`.
+# Either way, existing data in the old SQLite file is already gone by now
+# -- you will need to re-create your admin user (createsuperuser) once
+# after switching over.

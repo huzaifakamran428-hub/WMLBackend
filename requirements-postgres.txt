@@ -1,0 +1,9 @@
+# Only needed if you set DB_ENGINE=postgres in .env.
+# Requires PostgreSQL's `pg_config` to be on your PATH to build from
+# source (e.g. `brew install postgresql` on macOS), or use a platform
+# with a prebuilt wheel available for your Python version.
+#
+# Install with:
+#   pip install -r requirements.txt -r requirements-postgres.txt
+
+psycopg2-binary==2.9.9
