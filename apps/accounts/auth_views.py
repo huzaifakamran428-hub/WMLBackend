@@ -18,6 +18,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 
 from apps.accounts.serializers import LoginSerializer, UserSerializer
 from apps.audit.utils import write_audit_log
@@ -126,6 +127,40 @@ class AppleLoginView(APIView):
         any claims. Implement with a library such as `python-jose` +
         Apple's JWKS endpoint, using settings.APPLE_SIGNIN_CLIENT_ID."""
         raise NotImplementedError("Wire up Apple JWKS verification for production.")
+
+
+class TokenRefreshView(BaseTokenRefreshView):
+    """Wraps simplejwt's own refresh view to also stamp last_activity.
+
+    Without this, refreshing an access token doesn't reset the inactivity
+    clock (only login does, via _issue_tokens above) -- so once
+    last_activity has gone stale, the sequence is: request 401s -> client
+    refreshes -> refresh itself succeeds (it doesn't check last_activity
+    at all) -> client retries with the new access token -> that retry
+    401s AGAIN because last_activity is still stale -> the client gives up
+    after one retry and throws a plain 'unauthorized' that was never
+    routed through the "session expired, please log in again" flow,
+    since that flow only fires when the *refresh* itself fails. The net
+    effect client-side is a silently blank screen with no way to tell
+    the session needs a real re-login. Stamping last_activity here, the
+    same way a fresh login does, closes that gap: a successful refresh
+    now always leaves the user in a state where their next request will
+    actually be accepted.
+    """
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            refresh_str = request.data.get("refresh")
+            try:
+                token = RefreshToken(refresh_str)
+                user_id = token.payload.get("user_id")
+                User.objects.filter(pk=user_id).update(last_activity=timezone.now())
+            except Exception:
+                # Don't let a stamping problem break an otherwise-valid
+                # token refresh response.
+                pass
+        return response
 
 
 class LogoutView(APIView):

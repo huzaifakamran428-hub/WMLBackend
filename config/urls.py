@@ -3,12 +3,16 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework_simplejwt.views import TokenRefreshView
+from apps.accounts.auth_views import TokenRefreshView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
 
     path("api/auth/", include("apps.accounts.auth_urls")),
+    # Our own TokenRefreshView subclass (apps.accounts.auth_views) also
+    # stamps last_activity on a successful refresh -- see its docstring
+    # for why the stock simplejwt view alone caused silent 401s after a
+    # refresh that had itself succeeded.
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
 
     path("api/users/", include("apps.accounts.urls")),
